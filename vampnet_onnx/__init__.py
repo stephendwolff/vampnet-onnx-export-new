@@ -1,8 +1,10 @@
+
 from . import modules
 from pathlib import Path
 from . import scheduler
 from .interface import Interface
 from .modules.transformer import VampNet
+
 
 __version__ = "0.0.1"
 
@@ -10,24 +12,24 @@ ROOT = Path(__file__).parent.parent
 MODELS_DIR = ROOT / "models" / "vampnet"
 
 from huggingface_hub import hf_hub_download, HfFileSystem
-
 DEFAULT_HF_MODEL_REPO_DIR = ROOT / "DEFAULT_HF_MODEL_REPO"
-# DEFAULT_HF_MODEL_REPO = DEFAULT_HF_MODEL_REPO_DIR.read_text().strip()
-DEFAULT_HF_MODEL_REPO = "hugggof/vampnet"
+DEFAULT_HF_MODEL_REPO = DEFAULT_HF_MODEL_REPO_DIR.read_text().strip()
+# DEFAULT_HF_MODEL_REPO = "hugggof/vampnet"
 FS = HfFileSystem()
-
 
 def download_codec():
     # from dac.model.dac import DAC
     from lac.model.lac import LAC as DAC
-
     repo_id = DEFAULT_HF_MODEL_REPO
     filename = "codec.pth"
     codec_path = hf_hub_download(
-        repo_id=repo_id, filename=filename, subfolder=None, local_dir=MODELS_DIR
+        repo_id=repo_id,
+        filename=filename,
+        subfolder=None, 
+        local_dir=MODELS_DIR
     )
     return codec_path
-
+    
 
 def download_default():
     filenames = ["coarse.pth", "c2f.pth", "wavebeat.pth"]
@@ -39,7 +41,7 @@ def download_default():
             print(f"{path} does not exist, downloading")
             FS.download(f"{repo_id}/{filename}", path)
         paths.append(path)
-
+    
     # load the models
     return paths[0], paths[1]
 
@@ -53,11 +55,10 @@ def download_finetuned(name, repo_id=DEFAULT_HF_MODEL_REPO):
             print(f"{path} does not exist, downloading")
             FS.download(f"{repo_id}/loras/{name}/{filename}", path)
         paths.append(path)
-
+    
     # load the models
     return paths[0], paths[1]
-
-
+    
 def list_finetuned(repo_id=DEFAULT_HF_MODEL_REPO):
     diritems = FS.listdir(f"{repo_id}/loras")
     # iterate through all the names
@@ -74,3 +75,5 @@ def list_finetuned(repo_id=DEFAULT_HF_MODEL_REPO):
     # get the names of the valid items
     names = [item["name"].split("/")[-1] for item in valid_diritems]
     return names
+
+
