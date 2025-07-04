@@ -13,7 +13,8 @@ from .beats import WaveBeat
 from .mask import *
 
 # from dac.model.dac import DAC
-from lac.model.lac import LAC as DAC
+# from lac.model.lac import LAC as DAC
+# no longer using non ONNX LAC
 from .lac_onnx import LAC_ONNX as DAC_ONNX
 
 
@@ -54,12 +55,14 @@ def _load_model(
 
 
 class Interface(torch.nn.Module):
+
     def __init__(
         self,
         coarse_ckpt: str = None,
         coarse_lora_ckpt: str = None,
         coarse2fine_ckpt: str = None,
         coarse2fine_lora_ckpt: str = None,
+        codec_ckpt: str = None,
         wavebeat_ckpt: str = "./models/vampnet/wavebeat.pth",
         device: str = "cpu",
         coarse_chunk_size_s: int = 10,
@@ -68,8 +71,14 @@ class Interface(torch.nn.Module):
         lac_encoder_onnx_path: str = None,
         lac_decoder_onnx_path: str = None,
         lac_quantizer_onnx_path: str = None,
+        lac_codebook_tables_path: str = None,
     ):
         super().__init__()
+        # assert codec_ckpt is not None, "must provide a codec checkpoint"
+        # self.codec = DAC.load(Path(codec_ckpt))
+        # self.codec.eval()
+        # self.codec.to(device)
+        # self.codec_path = Path(codec_ckpt)
         assert (
             lac_encoder_onnx_path is not None
         ), "must provide an encoder onnx checkpoint"
@@ -83,10 +92,12 @@ class Interface(torch.nn.Module):
         self.lac_encoder_onnx_path = Path(lac_encoder_onnx_path)
         self.lac_decoder_onnx_path = Path(lac_decoder_onnx_path)
         self.lac_quantizer_onnx_path = Path(lac_quantizer_onnx_path)
+        self.lac_codebook_tables_path = Path(lac_codebook_tables_path)
         self.onnx_codec = DAC_ONNX(
             encoder_path=self.lac_encoder_onnx_path,
             quantizer_path=self.lac_quantizer_onnx_path,  # Your original loaded model
             decoder_path=self.lac_decoder_onnx_path,
+            codebook_tables_path=self.lac_codebook_tables_path,
         )
 
         assert coarse_ckpt is not None, "must provide a coarse checkpoint"
@@ -126,13 +137,14 @@ class Interface(torch.nn.Module):
             self.coarse = torch.compile(self.coarse)
             if self.c2f is not None:
                 self.c2f = torch.compile(self.c2f)
-            # self.onnx_codec = torch.compile(self.onnx_codec)
+            # self.codec = torch.compile(self.codec)
 
     @classmethod
     def default(cls):
-        from . import download_codec, download_default
+        from . import download_default  # download_codec,
 
         print(f"loading default vampnet")
+        # codec_path = download_codec()
         coarse_path, c2f_path = download_default()
         lac_encoder_onnx_path = str(
             (Path(__file__).parent / "../lac_encoder.onnx").resolve()
@@ -143,20 +155,24 @@ class Interface(torch.nn.Module):
         lac_quantizer_onnx_path = str(
             (Path(__file__).parent / "../lac_quantizer.onnx").resolve()
         )
-
+        lac_codebook_tables_path = str(
+            (Path(__file__).parent / "../lac_codebook_tables.pth").resolve()
+        )
         return Interface(
             coarse_ckpt=coarse_path,
             coarse2fine_ckpt=c2f_path,
+            # codec_ckpt=codec_path,
             lac_encoder_onnx_path=lac_encoder_onnx_path,
             lac_decoder_onnx_path=lac_decoder_onnx_path,
             lac_quantizer_onnx_path=lac_quantizer_onnx_path,
+            lac_codebook_tables_path=lac_codebook_tables_path,
         )
 
     @classmethod
     def available_models(cls):
         from . import list_finetuned
 
-        return list_finetuned() + ["default"]
+        return ["default"]  # list_finetuned() + ["default"]
 
     def load_finetuned(self, name: str):
         assert name in self.available_models(), f"{name} is not a valid model name"
@@ -254,11 +270,10 @@ class Interface(torch.nn.Module):
     def encode(self, signal: AudioSignal):
         signal = signal.to(self.device)
         signal = self._preprocess(signal)
-
         # Now you can use it:
         encoded = self.onnx_codec.encode(signal.samples, sample_rate=signal.sample_rate)
-        z = encoded["z"]  # The discrete tokens VampNet needs
-
+        # z = encoded["z"]  # The discrete tokens VampNet needs
+        z = self.onnx_codec.encode(signal.samples, signal.sample_rate)["codes"]
         return z
 
     def snap_to_beats(self, signal: AudioSignal):

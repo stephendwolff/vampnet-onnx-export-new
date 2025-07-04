@@ -10,7 +10,6 @@ from torch import Tensor
 from einops import rearrange
 import loralib as lora
 import audiotools as at
-from pathlib import Path
 
 from .activations import get_activation
 from .layers import CodebookEmbedding
@@ -588,26 +587,13 @@ class VampNet(at.ml.BaseModel):
 
         assert self.noise_mode == "mask", "deprecated"
 
-        # self.embedding = CodebookEmbedding(
-        #     latent_dim=latent_dim,
-        #     n_codebooks=n_codebooks,
-        #     vocab_size=vocab_size,
-        #     emb_dim=embedding_dim,
-        #     special_tokens=["MASK"],
-        # )
-        lac_encoder_onnx_path = str(
-            (Path(__file__).parent / "../../lac_codebook_tables.pth").resolve()
-        )
-
         self.embedding = CodebookEmbedding(
-            vocab_size=1024,
-            latent_dim=8,
-            n_codebooks=14,
-            emb_dim=256,
-            lookup_tables_path=lac_encoder_onnx_path,  # "codebook_tables.pth",
-            special_tokens=("MASK",),  # , "SEP"),
+            latent_dim=latent_dim,
+            n_codebooks=n_codebooks,
+            vocab_size=vocab_size,
+            emb_dim=embedding_dim,
+            special_tokens=["MASK"],
         )
-
         self.mask_token = self.embedding.special_idxs["MASK"]
 
         self.transformer = TransformerStack(
@@ -700,6 +686,10 @@ class VampNet(at.ml.BaseModel):
 
         # remove mask token
         z = z.masked_fill(z == self.mask_token, 0)
+
+        print(f"from_latents input shape: {z.shape}")
+        print(f"Expected decoder input shape: (batch, 1024, time)")
+
         signal = at.AudioSignal(
             codec.decode(
                 codec.quantizer.from_latents(self.embedding.from_codes(z, codec))[0]

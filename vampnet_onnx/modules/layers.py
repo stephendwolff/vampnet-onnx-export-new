@@ -1,14 +1,12 @@
 import time
 from typing import Optional
 from typing import Tuple
-from typing import Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
 from torch.nn.utils import weight_norm
-
 
 # Scripting this brings model speed up 1.4x
 @torch.jit.script
@@ -105,18 +103,12 @@ class FiLM(nn.Module):
 
 
 class CodebookEmbedding(nn.Module):
-    """
-    ONNX-compatible CodebookEmbedding that uses pre-saved codebook lookup tables
-    instead of accessing codec.quantizer.quantizers[i].codebook.weight
-    """
-
     def __init__(
         self,
         vocab_size: int,
         latent_dim: int,
         n_codebooks: int,
         emb_dim: int,
-        lookup_tables_path: str,
         special_tokens: Optional[Tuple[str]] = None,
     ):
         super().__init__()
@@ -125,103 +117,48 @@ class CodebookEmbedding(nn.Module):
         self.latent_dim = latent_dim
         self.vocab_size = vocab_size
 
-        # Load pre-saved codebook lookup tables
-        self.lookup_tables = torch.load(lookup_tables_path, map_location="cpu")
-        print(f"✓ Loaded {len(self.lookup_tables)} codebook lookup tables")
-
-        # Validate lookup tables
-        # assert (
-        #     len(self.lookup_tables) == n_codebooks
-        # ), f"Expected {n_codebooks} codebooks, got {len(self.lookup_tables)}"
-
-        # Convert to nn.Parameters for proper device handling
-        self.codebook_embeddings = nn.ParameterList(
-            [
-                nn.Parameter(table.clone(), requires_grad=False)
-                for table in self.lookup_tables
-            ]
-        )
-
-        # Handle special tokens
-        self.special_tokens = special_tokens
         if special_tokens is not None:
-            self.special = nn.ParameterDict(
-                {
-                    tkn: nn.Parameter(torch.randn(n_codebooks, self.latent_dim))
-                    for tkn in special_tokens
+            for tkn in special_tokens:
+                self.special = nn.ParameterDict(
+                    {
+                        tkn: nn.Parameter(torch.randn(n_codebooks, self.latent_dim))
+                        for tkn in special_tokens
+                    }
+                )
+                self.special_idxs = {
+                    tkn: i + vocab_size for i, tkn in enumerate(special_tokens)
                 }
-            )
-            self.special_idxs = {
-                tkn: i + vocab_size for i, tkn in enumerate(special_tokens)
-            }
-        else:
-            self.special = None
-            self.special_idxs = {}
 
         self.out_proj = nn.Conv1d(n_codebooks * self.latent_dim, self.emb_dim, 1)
 
-    def get_lookup_table(self, codebook_idx: int) -> torch.Tensor:
-        """
-        Get lookup table for a specific codebook index
-
-        Args:
-            codebook_idx: Index of the codebook (0 to n_codebooks-1)
-
-        Returns:
-            Lookup table tensor of shape (vocab_size, latent_dim)
-        """
-        base_table = self.codebook_embeddings[codebook_idx]
-
-        if self.special is not None:
-            # Add special token embeddings
-            special_lookup = torch.stack(
-                [self.special[tkn][codebook_idx] for tkn in self.special_tokens], dim=0
-            )
-            lookup_table = torch.cat([base_table, special_lookup], dim=0)
-        else:
-            lookup_table = base_table
-
-        return lookup_table
-
-    def from_codes(self, codes: torch.Tensor, codec=None) -> torch.Tensor:
-        """
-        Get continuous embeddings from discrete codes (ONNX-compatible version)
-
-        Args:
-            codes: Discrete codes tensor of shape (batch, n_codebooks, time)
-            codec: Ignored (kept for compatibility with original interface)
-
-        Returns:
-            Latent embeddings of shape (batch, n_codebooks * latent_dim, time)
+    def from_codes(self, codes: torch.Tensor, codec):
+        """ 
+        get a sequence of continuous embeddings from a sequence of discrete codes. 
+        unlike it's counterpart in the original VQ-VAE, this function adds for any special tokens
+        necessary for the language model, like <MASK>. 
         """
         n_codebooks = codes.shape[1]
         latent = []
-
         for i in range(n_codebooks):
-            c = codes[:, i, :]  # Shape: (batch, time)
+            c = codes[:, i, :]
 
-            # Get lookup table for this codebook
-            lookup_table = self.get_lookup_table(i)
+            lookup_table = codec.quantizer.quantizers[i].codebook.weight
+            if hasattr(self, "special"):
+                special_lookup = torch.cat(
+                    [self.special[tkn][i : i + 1] for tkn in self.special], dim=0
+                )
+                lookup_table = torch.cat([lookup_table, special_lookup], dim=0)
 
-            # Embedding lookup
-            l = F.embedding(c, lookup_table).transpose(
-                1, 2
-            )  # (batch, latent_dim, time)
+            l = F.embedding(c, lookup_table).transpose(1, 2)
             latent.append(l)
 
-        # Concatenate all codebook embeddings
-        latent = torch.cat(latent, dim=1)  # (batch, n_codebooks * latent_dim, time)
+        latent = torch.cat(latent, dim=1)
         return latent
 
-    def forward(self, latents: torch.Tensor) -> torch.Tensor:
+    def forward(self, latents: torch.Tensor):
         """
-        Project a sequence of latents to a sequence of embeddings
-
-        Args:
-            latents: Input latents of shape (batch, n_codebooks * latent_dim, time)
-
-        Returns:
-            Projected embeddings of shape (batch, emb_dim, time)
+        project a sequence of latents to a sequence of embeddings
         """
         x = self.out_proj(latents)
         return x
+
