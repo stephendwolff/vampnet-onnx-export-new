@@ -93,11 +93,18 @@ class Interface(torch.nn.Module):
         self.lac_decoder_onnx_path = Path(lac_decoder_onnx_path)
         self.lac_quantizer_onnx_path = Path(lac_quantizer_onnx_path)
         self.lac_codebook_tables_path = Path(lac_codebook_tables_path)
+        
+        # Check for optional from_codes model
+        lac_from_codes_path = self.lac_encoder_onnx_path.parent / "lac_from_codes.onnx"
+        if not lac_from_codes_path.exists():
+            lac_from_codes_path = None
+            
         self.onnx_codec = DAC_ONNX(
             encoder_path=self.lac_encoder_onnx_path,
             quantizer_path=self.lac_quantizer_onnx_path,  # Your original loaded model
             decoder_path=self.lac_decoder_onnx_path,
             codebook_tables_path=self.lac_codebook_tables_path,
+            from_codes_path=lac_from_codes_path,
         )
 
         assert coarse_ckpt is not None, "must provide a coarse checkpoint"

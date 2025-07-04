@@ -687,13 +687,9 @@ class VampNet(at.ml.BaseModel):
         # remove mask token
         z = z.masked_fill(z == self.mask_token, 0)
 
-        print(f"from_latents input shape: {z.shape}")
-        print(f"Expected decoder input shape: (batch, 1024, time)")
-
+        # Use the decode_from_codes method which handles the full quantized features
         signal = at.AudioSignal(
-            codec.decode(
-                codec.quantizer.from_latents(self.embedding.from_codes(z, codec))[0]
-            )["audio"],
+            codec.decode_from_codes(z)["audio"],
             codec.sample_rate,
         )
 

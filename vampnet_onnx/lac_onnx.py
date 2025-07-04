@@ -17,12 +17,19 @@ class LAC_ONNX:
         quantizer_path,
         decoder_path,
         codebook_tables_path,
+        from_codes_path=None,
         sample_rate=44100,
         hop_length=6144,
     ):
         self.encoder_session = ort.InferenceSession(encoder_path)
         self.quantizer_session = ort.InferenceSession(quantizer_path)
         self.decoder_session = ort.InferenceSession(decoder_path)
+        
+        # Optional from_codes session for decoding from codes
+        if from_codes_path and Path(from_codes_path).exists():
+            self.from_codes_session = ort.InferenceSession(from_codes_path)
+        else:
+            self.from_codes_session = None
 
         self.codebook_tables = torch.load(codebook_tables_path, map_location="cpu")
 
@@ -40,6 +47,8 @@ class LAC_ONNX:
             for i, codebook_weight in enumerate(parent_codec.codebook_tables):
                 mock_quantizer = self.MockQuantizer(codebook_weight)
                 self.quantizers.append(mock_quantizer)
+            # Cache for storing full quantized features
+            self._cached_quantized_features = {}
 
         class MockQuantizer:
             """Mock individual quantizer with codebook.weight"""
@@ -55,21 +64,8 @@ class LAC_ONNX:
 
         def from_latents(self, z):
             """Convert discrete codes back to continuous latents"""
-            print(f"from_latents input shape: {z.shape}, dtype: {z.dtype}")
-
             if z.dtype in [torch.int64, torch.long]:
                 batch_size, n_codebooks, time_frames = z.shape  # (1, 14, 576)
-
-                # Debug: Check codebook dimensions
-                total_expected_dim = 0
-                for i, quantizer in enumerate(self.quantizers):
-                    dim = quantizer.codebook.weight.shape[1]
-                    total_expected_dim += dim
-                    print(
-                        f"Codebook {i}: {quantizer.codebook.weight.shape} -> feature_dim: {dim}"
-                    )
-
-                print(f"Total expected dimension: {total_expected_dim}")
 
                 # Manual codebook lookup to reconstruct continuous latents
                 quantized_features = []
@@ -86,10 +82,6 @@ class LAC_ONNX:
 
                 # Transpose to (batch, feature_dim, time) for decoder
                 continuous_latents = continuous_latents.transpose(1, 2)
-
-                print(
-                    f"Reconstructed continuous latents shape: {continuous_latents.shape}, dtype: {continuous_latents.dtype}"
-                )
 
                 return [continuous_latents]
 
@@ -141,10 +133,16 @@ class LAC_ONNX:
             # Use all codebooks (default)
             codes = all_codes
 
+        # Cache the quantized features for this set of codes
+        # Use a hash of the codes as the key
+        codes_tensor = torch.from_numpy(codes)
+        cache_key = hash(codes_tensor.cpu().numpy().tobytes())
+        self.quantizer._cached_quantized_features[cache_key] = torch.from_numpy(quantized_z)
+
         out = {
             "length": length,
             "z": torch.from_numpy(quantized_z),
-            "codes": torch.from_numpy(codes),
+            "codes": codes_tensor,
             # Add other outputs for compatibility
             "latents": (
                 torch.from_numpy(quantizer_outputs[2])
@@ -165,3 +163,23 @@ class LAC_ONNX:
             audio_tensor = audio_tensor[..., :length]
 
         return {"audio": audio_tensor}
+    
+    def decode_from_codes(self, codes, length=None):
+        """Decode from discrete codes by reconstructing full quantized features"""
+        if self.from_codes_session is None:
+            # First try to find cached quantized features
+            cache_key = hash(codes.cpu().numpy().tobytes())
+            if cache_key in self.quantizer._cached_quantized_features:
+                quantized_z = self.quantizer._cached_quantized_features[cache_key]
+            else:
+                raise ValueError(
+                    "Cannot decode from codes without lac_from_codes.onnx model. "
+                    "Please provide from_codes_path when initializing LAC_ONNX."
+                )
+        else:
+            # Use the from_codes ONNX model to reconstruct full features
+            codes_numpy = codes.numpy() if isinstance(codes, torch.Tensor) else codes
+            quantized_z = self.from_codes_session.run(None, {"codes": codes_numpy})[0]
+            quantized_z = torch.from_numpy(quantized_z)
+        
+        return self.decode(quantized_z, length=length)
