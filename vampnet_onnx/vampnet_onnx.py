@@ -123,6 +123,9 @@ class VampNetONNX(nn.Module):
         # Apply initial mask
         z_masked = z.masked_fill(mask.bool(), self.mask_token)
         
+        # Keep track of the original mask - tokens that should never be changed
+        original_mask = mask.clone()
+        
         logging.debug(f"Generate: z shape: {z.shape}, n_codebooks: {self.n_codebooks}, n_predict: {self.n_predict_codebooks}")
         
         # Count mask tokens
@@ -194,10 +197,14 @@ class VampNetONNX(nn.Module):
             if self.n_conditioning_codebooks > 0:
                 # Flatten only the non-conditioning part for processing
                 z_masked_flat = codebook_flatten(z_masked[:, self.n_conditioning_codebooks:, :])
+                z_flat = codebook_flatten(z[:, self.n_conditioning_codebooks:, :])
+                original_mask_flat = codebook_flatten(original_mask[:, self.n_conditioning_codebooks:, :])
                 mask_flat = (z_masked_flat == self.mask_token).int()
                 
-                # Update with sampled values
+                # Update with sampled values only where currently masked
                 sampled_z = torch.where(mask_flat.bool(), sampled_z, z_masked_flat)
+                # For unmasked positions (original_mask == 0), keep original values
+                sampled_z = torch.where(~original_mask_flat.bool(), z_flat, sampled_z)
                 selected_probs = torch.where(mask_flat.bool(), selected_probs, torch.inf)
                 
                 # Calculate number to mask
@@ -214,6 +221,9 @@ class VampNetONNX(nn.Module):
                 
                 # Update z_masked
                 z_masked_flat = torch.where(mask_flat.bool(), self.mask_token, sampled_z)
+                
+                # Ensure original unmasked tokens remain unchanged
+                z_masked_flat = torch.where(~original_mask_flat.bool(), z_flat, z_masked_flat)
                 
                 # Unflatten
                 z_masked_unflat = codebook_unflatten(z_masked_flat, self.n_predict_codebooks)
@@ -226,10 +236,14 @@ class VampNetONNX(nn.Module):
                 # No conditioning codebooks (coarse model)
                 # Flatten z_masked for processing
                 z_masked_flat = codebook_flatten(z_masked)
+                z_flat = codebook_flatten(z)
+                original_mask_flat = codebook_flatten(original_mask)
                 mask_flat = (z_masked_flat == self.mask_token).int()
                 
-                # Update with sampled values
+                # Update with sampled values only where currently masked
                 sampled_z = torch.where(mask_flat.bool(), sampled_z, z_masked_flat)
+                # For unmasked positions (original_mask == 0), keep original values
+                sampled_z = torch.where(~original_mask_flat.bool(), z_flat, sampled_z)
                 selected_probs = torch.where(mask_flat.bool(), selected_probs, torch.inf)
                 
                 # Calculate number to mask
@@ -247,8 +261,14 @@ class VampNetONNX(nn.Module):
                 # Update z_masked
                 z_masked_flat = torch.where(mask_flat.bool(), self.mask_token, sampled_z)
                 
+                # Ensure original unmasked tokens remain unchanged
+                z_masked_flat = torch.where(~original_mask_flat.bool(), z_flat, z_masked_flat)
+                
                 # Unflatten
                 z_masked = codebook_unflatten(z_masked_flat, self.n_codebooks)
+        
+        # Final step: ensure original unmasked tokens are preserved in the output
+        z_masked = torch.where(~original_mask.bool(), z, z_masked)
         
         if return_signal:
             return self.decode(z_masked, codec)
