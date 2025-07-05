@@ -11,6 +11,7 @@ import tqdm
 from .modules.transformer import VampNet
 from .beats import WaveBeat
 from .mask import *
+from .vampnet_onnx import VampNetCoarseONNX, VampNetC2FONNX
 
 # from dac.model.dac import DAC
 # from lac.model.lac import LAC as DAC
@@ -72,6 +73,11 @@ class Interface(torch.nn.Module):
         lac_decoder_onnx_path: str = None,
         lac_quantizer_onnx_path: str = None,
         lac_codebook_tables_path: str = None,
+        use_onnx_vampnet: bool = False,
+        vampnet_coarse_embeddings_onnx_path: str = None,
+        vampnet_coarse_transformer_onnx_path: str = None,
+        vampnet_c2f_embeddings_onnx_path: str = None,
+        vampnet_c2f_transformer_onnx_path: str = None,
     ):
         super().__init__()
         # assert codec_ckpt is not None, "must provide a codec checkpoint"
@@ -107,17 +113,42 @@ class Interface(torch.nn.Module):
             from_codes_path=lac_from_codes_path,
         )
 
-        assert coarse_ckpt is not None, "must provide a coarse checkpoint"
-        self.coarse = _load_model(
-            ckpt=coarse_ckpt,
-            lora_ckpt=coarse_lora_ckpt,
-            device=device,
-            chunk_size_s=coarse_chunk_size_s,
-        )
-        self.coarse_path = Path(coarse_ckpt)
+        self.use_onnx_vampnet = use_onnx_vampnet
+        
+        if use_onnx_vampnet:
+            # Load ONNX models
+            assert vampnet_coarse_embeddings_onnx_path is not None, "must provide coarse embeddings ONNX path"
+            assert vampnet_coarse_transformer_onnx_path is not None, "must provide coarse transformer ONNX path"
+            
+            self.coarse = VampNetCoarseONNX(
+                embeddings_path=vampnet_coarse_embeddings_onnx_path,
+                transformer_path=vampnet_coarse_transformer_onnx_path,
+                device=device
+            )
+            self.coarse.chunk_size_s = coarse_chunk_size_s
+            self.coarse_path = Path(vampnet_coarse_embeddings_onnx_path)
+        else:
+            # Load PyTorch model
+            assert coarse_ckpt is not None, "must provide a coarse checkpoint"
+            self.coarse = _load_model(
+                ckpt=coarse_ckpt,
+                lora_ckpt=coarse_lora_ckpt,
+                device=device,
+                chunk_size_s=coarse_chunk_size_s,
+            )
+            self.coarse_path = Path(coarse_ckpt)
 
         # check if we have a coarse2fine ckpt
-        if coarse2fine_ckpt is not None:
+        if use_onnx_vampnet and vampnet_c2f_embeddings_onnx_path is not None:
+            assert vampnet_c2f_transformer_onnx_path is not None, "must provide c2f transformer ONNX path"
+            self.c2f = VampNetC2FONNX(
+                embeddings_path=vampnet_c2f_embeddings_onnx_path,
+                transformer_path=vampnet_c2f_transformer_onnx_path,
+                device=device
+            )
+            self.c2f.chunk_size_s = coarse2fine_chunk_size_s
+            self.c2f_path = Path(vampnet_c2f_embeddings_onnx_path)
+        elif coarse2fine_ckpt is not None:
             self.c2f_path = Path(coarse2fine_ckpt)
             self.c2f = _load_model(
                 ckpt=coarse2fine_ckpt,
@@ -139,7 +170,7 @@ class Interface(torch.nn.Module):
         self.device = device
         self.loudness = -24.0
 
-        if compile:
+        if compile and not use_onnx_vampnet:
             logging.debug(f"compiling models")
             self.coarse = torch.compile(self.coarse)
             if self.c2f is not None:
@@ -147,33 +178,53 @@ class Interface(torch.nn.Module):
             # self.codec = torch.compile(self.codec)
 
     @classmethod
-    def default(cls):
+    def default(cls, use_onnx=False):
         from . import download_default  # download_codec,
 
-        print(f"loading default vampnet")
-        # codec_path = download_codec()
-        coarse_path, c2f_path = download_default()
-        lac_encoder_onnx_path = str(
-            (Path(__file__).parent / "../lac_encoder.onnx").resolve()
-        )
-        lac_decoder_onnx_path = str(
-            (Path(__file__).parent / "../lac_decoder.onnx").resolve()
-        )
-        lac_quantizer_onnx_path = str(
-            (Path(__file__).parent / "../lac_quantizer.onnx").resolve()
-        )
-        lac_codebook_tables_path = str(
-            (Path(__file__).parent / "../lac_codebook_tables.pth").resolve()
-        )
-        return Interface(
-            coarse_ckpt=coarse_path,
-            coarse2fine_ckpt=c2f_path,
-            # codec_ckpt=codec_path,
-            lac_encoder_onnx_path=lac_encoder_onnx_path,
-            lac_decoder_onnx_path=lac_decoder_onnx_path,
-            lac_quantizer_onnx_path=lac_quantizer_onnx_path,
-            lac_codebook_tables_path=lac_codebook_tables_path,
-        )
+        print(f"loading default vampnet (ONNX: {use_onnx})")
+        
+        base_path = Path(__file__).parent.parent
+        lac_encoder_onnx_path = str((base_path / "lac_encoder.onnx").resolve())
+        lac_decoder_onnx_path = str((base_path / "lac_decoder.onnx").resolve())
+        lac_quantizer_onnx_path = str((base_path / "lac_quantizer.onnx").resolve())
+        lac_codebook_tables_path = str((base_path / "lac_codebook_tables.pth").resolve())
+        
+        if use_onnx:
+            # Use ONNX models
+            vampnet_coarse_embeddings_path = str((base_path / "vampnet_coarse_embeddings.onnx").resolve())
+            vampnet_coarse_transformer_path = str((base_path / "vampnet_coarse_transformer.onnx").resolve())
+            vampnet_c2f_embeddings_path = str((base_path / "vampnet_c2f_embeddings.onnx").resolve())
+            vampnet_c2f_transformer_path = str((base_path / "vampnet_c2f_transformer.onnx").resolve())
+            
+            # Check if ONNX models exist
+            if not Path(vampnet_coarse_embeddings_path).exists():
+                raise FileNotFoundError(f"ONNX model not found at {vampnet_coarse_embeddings_path}. Run scripts/coarse_onnx_export.py first.")
+                
+            return Interface(
+                coarse_ckpt=None,
+                coarse2fine_ckpt=None,
+                use_onnx_vampnet=True,
+                vampnet_coarse_embeddings_onnx_path=vampnet_coarse_embeddings_path,
+                vampnet_coarse_transformer_onnx_path=vampnet_coarse_transformer_path,
+                vampnet_c2f_embeddings_onnx_path=vampnet_c2f_embeddings_path if Path(vampnet_c2f_embeddings_path).exists() else None,
+                vampnet_c2f_transformer_onnx_path=vampnet_c2f_transformer_path if Path(vampnet_c2f_transformer_path).exists() else None,
+                lac_encoder_onnx_path=lac_encoder_onnx_path,
+                lac_decoder_onnx_path=lac_decoder_onnx_path,
+                lac_quantizer_onnx_path=lac_quantizer_onnx_path,
+                lac_codebook_tables_path=lac_codebook_tables_path,
+            )
+        else:
+            # Use PyTorch models
+            coarse_path, c2f_path = download_default()
+            return Interface(
+                coarse_ckpt=coarse_path,
+                coarse2fine_ckpt=c2f_path,
+                use_onnx_vampnet=False,
+                lac_encoder_onnx_path=lac_encoder_onnx_path,
+                lac_decoder_onnx_path=lac_decoder_onnx_path,
+                lac_quantizer_onnx_path=lac_quantizer_onnx_path,
+                lac_codebook_tables_path=lac_codebook_tables_path,
+            )
 
     @classmethod
     def available_models(cls):

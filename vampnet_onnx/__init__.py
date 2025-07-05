@@ -4,6 +4,7 @@ from pathlib import Path
 from . import scheduler
 from .interface import Interface
 from .modules.transformer import VampNet
+from .vampnet_onnx import VampNetONNX, VampNetCoarseONNX, VampNetC2FONNX
 
 
 __version__ = "0.0.1"
