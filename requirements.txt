@@ -1,0 +1,25 @@
+torch>=2.0.0
+numpy>=1.21.0
+onnx>=1.14.0
+onnxruntime>=1.15.0
+scipy>=1.7.0
+librosa>=0.9.0
+soundfile>=0.10.0
+tqdm>=4.62.0
+resampy>=0.3.1
+vampnet @ git+https://github.com/stephendwolff/vampnet.git
+descript-audiotools @ git+https://github.com/hugofloresgarcia/audiotools.git@54eecf66f38af6a15bd8c42f44c9f3e1746892bb
+
+pytest>=6.2.0
+black>=22.0.0
+flake8>=4.0.0
+mypy>=0.950
+jupyter>=1.0.0
+matplotlib>=3.5.0
+
+
+onnxruntime-tools>=1.7.0
+pillow>=8.3.0
+coremltools>=6.0
+tensorflow>=2.9.0
+onnx-tf>=1.10.0
