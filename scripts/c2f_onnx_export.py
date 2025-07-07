@@ -88,7 +88,7 @@ def export_c2f_vampnet_simple(model_path, output_path):
     print(f"  n_layers: {model.n_layers}")
     
     # Load codebook tables
-    codebook_tables_path = Path(__file__).parent.parent / "lac_codebook_tables.pth"
+    codebook_tables_path = Path(__file__).parent.parent / "models_onnx/lac_codebook_tables.pth"
     codebook_tables = torch.load(codebook_tables_path, map_location="cpu")
     
     # Test the PyTorch model first
@@ -230,8 +230,11 @@ def export_c2f_vampnet_simple(model_path, output_path):
             # Project to vocabulary
             logits = self.classifier(out, None)
             
-            # The classifier outputs only the non-conditioning codebooks
-            # Shape: (batch, n_predict_codebooks * vocab_size, time)
+            # The classifier outputs shape: (batch, n_predict_codebooks * vocab_size, time)
+            # But VampNet expects: (batch, vocab_size, time * n_predict_codebooks)
+            # Need to rearrange like the original model does
+            from einops import rearrange
+            logits = rearrange(logits, "b (p c) t -> b p (t c)", c=self.n_predict_codebooks)
             
             return logits
     

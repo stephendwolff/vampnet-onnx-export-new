@@ -2,8 +2,8 @@ import random
 import vampnet_onnx as vampnet
 import audiotools as at
 
-# load the default vampnet model
-interface = vampnet.interface.Interface.default()
+# load the default vampnet model with ONNX
+interface = vampnet.interface.Interface.default(use_onnx=True)
 
 # list available finetuned models
 finetuned_model_choices = interface.available_models()

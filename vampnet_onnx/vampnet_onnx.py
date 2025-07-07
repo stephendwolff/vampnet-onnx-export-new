@@ -65,8 +65,8 @@ class VampNetONNX(nn.Module):
         # Convert back to torch
         logits = torch.from_numpy(logits).to(self.device)
         
-        # Logits are already in the correct format from ONNX
-        # (batch, n_predict_codebooks * vocab_size, time)
+        # Logits from ONNX are in the format: (batch, vocab_size, time * n_predict_codebooks)
+        # This matches the PyTorch model's output format after rearrange
         return logits
     
     @torch.no_grad()
@@ -137,17 +137,22 @@ class VampNetONNX(nn.Module):
             r = scalar_to_batch_tensor((i + 1) / sampling_steps, z.shape[0]).to(z.device)
             
             # Forward pass
-            logits = self.forward(z_masked)  # (batch, n_predict * vocab, time)
+            logits = self.forward(z_masked)  # (batch, vocab_size, time * n_codebooks)
             
             # Reshape logits for sampling
-            # From (batch, n_predict * vocab, time) to (batch, time, n_predict * vocab)
+            # The model outputs in the format used by VampNet after rearrange
             batch_size = logits.shape[0]
-            logits = logits.permute(0, 2, 1)  # (batch, time, n_predict * vocab)
+            vocab_size = logits.shape[1]
+            seq_len = logits.shape[2]  # This is time * n_codebooks
+            
+            # First permute to (batch, seq, vocab) for sampling
+            logits = logits.permute(0, 2, 1)  # (batch, time * n_codebooks, vocab_size)
             
             # For sampling, we need to handle multiple codebooks
             if self.n_predict_codebooks > 1:
-                # Reshape to separate codebooks: (batch, time, n_predict, vocab)
-                logits_reshaped = logits.reshape(batch_size, time_steps, self.n_predict_codebooks, self.vocab_size)
+                # The sequence is already time * n_codebooks, need to separate them
+                # From (batch, time * n_codebooks, vocab) to (batch, time, n_codebooks, vocab)
+                logits_reshaped = logits.reshape(batch_size, time_steps, self.n_predict_codebooks, vocab_size)
                 # Sample for each codebook position
                 sampled_tokens = []
                 sampled_probs = []
@@ -277,8 +282,22 @@ class VampNetONNX(nn.Module):
     
     def decode(self, z: torch.Tensor, codec):
         """Decode tokens to audio signal"""
-        # Remove mask tokens
-        z = z.masked_fill(z == self.mask_token, 0)
+        # Check if there are any mask tokens - this should not happen
+        if (z == self.mask_token).any():
+            import logging
+            mask_count = (z == self.mask_token).sum().item()
+            total_tokens = z.numel()
+            logging.warning(f"Found {mask_count}/{total_tokens} mask tokens in decode input! This should not happen.")
+            
+            # Debug info
+            for cb in range(z.shape[1]):
+                cb_mask_count = (z[:, cb, :] == self.mask_token).sum().item()
+                if cb_mask_count > 0:
+                    logging.warning(f"  Codebook {cb}: {cb_mask_count} mask tokens")
+            
+            # For now, just replace with 0 to match original behavior
+            # but log a warning
+            z = z.masked_fill(z == self.mask_token, 0)
         
         # Use codec to decode
         signal = codec.decode_from_codes(z)["audio"]
