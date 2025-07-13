@@ -230,16 +230,8 @@ class Interface(torch.nn.Module):
             use_onnx_vampnet=True,
             vampnet_coarse_embeddings_onnx_path=vampnet_coarse_embeddings_path,
             vampnet_coarse_transformer_onnx_path=vampnet_coarse_transformer_path,
-            vampnet_c2f_embeddings_onnx_path=(
-                vampnet_c2f_embeddings_path
-                if Path(vampnet_c2f_embeddings_path).exists()
-                else None
-            ),
-            vampnet_c2f_transformer_onnx_path=(
-                vampnet_c2f_transformer_path
-                if Path(vampnet_c2f_transformer_path).exists()
-                else None
-            ),
+            vampnet_c2f_embeddings_onnx_path=vampnet_c2f_embeddings_path,
+            vampnet_c2f_transformer_onnx_path=vampnet_c2f_transformer_path,
             lac_encoder_onnx_path=lac_encoder_onnx_path,
             lac_decoder_onnx_path=lac_decoder_onnx_path,
             lac_quantizer_onnx_path=lac_quantizer_onnx_path,
