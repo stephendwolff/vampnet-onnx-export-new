@@ -8,7 +8,7 @@ soundfile>=0.10.0
 tqdm>=4.62.0
 resampy>=0.3.1
 vampnet @ git+https://github.com/stephendwolff/vampnet.git
-descript-audiotools @ git+https://github.com/hugofloresgarcia/audiotools.git@54eecf66f38af6a15bd8c42f44c9f3e1746892bb
+#descript-audiotools @ git+https://github.com/hugofloresgarcia/audiotools.git@54eecf66f38af6a15bd8c42f44c9f3e1746892bb
 
 pytest>=6.2.0
 black>=22.0.0
