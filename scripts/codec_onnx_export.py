@@ -84,7 +84,7 @@ dummy_audio = torch.randn(1, 1, samples)
 torch.onnx.export(
     encoder_wrapper,
     dummy_audio,
-    "lac_encoder.onnx",
+    "models_onnx/lac_encoder.onnx",
     export_params=True,
     opset_version=17,
     do_constant_folding=True,
@@ -107,7 +107,7 @@ dummy_encoded = torch.randn(1, 1024, time_frames)
 torch.onnx.export(
     decoder_wrapper,
     dummy_encoded,
-    "lac_decoder.onnx",
+    "models_onnx/lac_decoder.onnx",
     export_params=True,
     opset_version=17,
     do_constant_folding=True,

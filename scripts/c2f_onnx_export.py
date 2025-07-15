@@ -302,7 +302,7 @@ def export_c2f_vampnet_simple(model_path, output_path):
 if __name__ == "__main__":
     # Default paths
     model_path = Path(__file__).parent.parent / "models" / "vampnet" / "c2f.pth"
-    output_path = Path(__file__).parent.parent / "vampnet_c2f.onnx"
+    output_path = Path(__file__).parent.parent / "models_onnx" / "vampnet_c2f.onnx"
     
     # Check if model exists
     if not model_path.exists():

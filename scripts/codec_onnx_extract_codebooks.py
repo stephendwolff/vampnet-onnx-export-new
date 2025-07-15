@@ -35,4 +35,4 @@ lac_model.to(device)
 lac_model.eval()
 
 # Extract the lookup tables
-lookup_tables = extract_codebook_lookup_tables(lac_model, "lac_codebook_tables.pth")
+lookup_tables = extract_codebook_lookup_tables(lac_model, "models_onnx/lac_codebook_tables.pth")

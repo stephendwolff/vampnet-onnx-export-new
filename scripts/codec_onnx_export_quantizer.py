@@ -59,4 +59,4 @@ def export_quantizer_only(output_path):
 
 
 # Usage
-export_quantizer_only("lac_quantizer.onnx")
+export_quantizer_only("models_onnx/lac_quantizer.onnx")

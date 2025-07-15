@@ -123,7 +123,7 @@ print("\nExporting to ONNX...")
 torch.onnx.export(
     from_codes_module,
     test_codes,
-    "../lac_from_codes.onnx",
+    "models_onnx/lac_from_codes.onnx",
     export_params=True,
     opset_version=11,
     input_names=["codes"],
@@ -137,7 +137,7 @@ torch.onnx.export(
 print("✓ Exported lac_from_codes.onnx successfully!")
 
 # Test the ONNX model
-session = ort.InferenceSession("../lac_from_codes.onnx")
+session = ort.InferenceSession("models_onnx/lac_from_codes.onnx")
 
 print("\nONNX Model Info:")
 print("Inputs:")

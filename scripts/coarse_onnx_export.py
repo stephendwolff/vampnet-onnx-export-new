@@ -299,7 +299,7 @@ def export_coarse_vampnet_simple(model_path, output_path):
 if __name__ == "__main__":
     # Default paths
     model_path = Path(__file__).parent.parent / "models" / "vampnet" / "coarse.pth"
-    output_path = Path(__file__).parent.parent / "vampnet_coarse.onnx"
+    output_path = Path(__file__).parent.parent / "models_onnx" / "vampnet_coarse.onnx"
 
     # Check if model exists
     if not model_path.exists():
