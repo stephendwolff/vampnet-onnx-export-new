@@ -15,3 +15,12 @@ The export process includes:
 4. The exported models will be placed in the `models_onnx` directory
 
 Once the models are exported, you can run inference using `hello_onnx.py` or integrate the ONNX models into your own applications.
+
+## Original VampNET:
+
+Paper here: https://arxiv.org/abs/2307.04686. 
+
+Code here: https://github.com/hugofloresgarcia/vampnet?tab=readme-ov-file#take-a-look-at-the-pretrained-models
+
+Additional writeup by Hugo Flores Garcia here:
+https://hugo-does-things.notion.site/VampNet-Music-Generation-via-Masked-Acoustic-Token-Modeling-e37aabd0d5f1493aa42c5711d0764b33
