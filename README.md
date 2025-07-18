@@ -10,7 +10,7 @@ To use this repository, you must first export the VampNet models to ONNX format 
 
 The export process includes:
 1. Setting up a Python 3.11 environment
-2. Downloading the original VampNet models from Zenodo
+2. Downloading the original VampNet models from [Zenodo](https://zenodo.org/records/8136629)
 3. Running the export scripts to generate ONNX models
 4. The exported models will be placed in the `models_onnx` directory
 
