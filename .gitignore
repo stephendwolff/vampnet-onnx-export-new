@@ -134,14 +134,12 @@ snapshot/
 notebooks/scratch.ipynb
 notebooks/inspect.ipynb
 notebooks/effects.ipynb
-notebooks/*.ipynb
 notebooks/*.gif
 notebooks/*.wav
 notebooks/*.mp4
 *runs/
 boards/
 samples/
-*.ipynb
 
 results.json
 metrics.csv
